@@ -99,6 +99,141 @@ app.post("/api/scan", async (req, res) => {
 });
 
 // ─────────────────────────────────────────
+// ROUTE 1b — OCR Only (no scanning)
+// Extracts text from a base64 image and returns it.
+// The extension pastes this text into the prompt box;
+// scanning happens later when the user clicks Send.
+// ─────────────────────────────────────────
+app.post("/api/ocr", async (req, res) => {
+  const { image } = req.body;
+  if (!image) return res.status(400).json({ error: "No image provided" });
+
+  try {
+    const ocrRes = await fetch(`${ML_SERVICE_URL}/ocr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image }),
+    });
+    if (!ocrRes.ok) {
+      return res.status(502).json({ error: "OCR service error", text: "" });
+    }
+    const { text } = await ocrRes.json();
+    return res.json({ text: (text || "").trim() });
+  } catch (err) {
+    console.error("[api/ocr] Error:", err.message);
+    return res.json({ text: "" });
+  }
+});
+
+// ─────────────────────────────────────────
+// ROUTE 1c — Image Scan Endpoint
+// Accepts a base64 image, OCRs it via the Python ML service,
+// then runs the extracted text through the same scan pipeline.
+// ─────────────────────────────────────────
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
+
+app.post("/api/scan-image", async (req, res) => {
+  const { image, department, source } = req.body;
+
+  if (!image) {
+    return res.status(400).json({ error: "No image provided" });
+  }
+
+  try {
+    // Step 1: OCR — extract text from the image via Python ml-service
+    let extractedText = "";
+    try {
+      const ocrRes = await fetch(`${ML_SERVICE_URL}/ocr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image }),
+      });
+      if (ocrRes.ok) {
+        const ocrData = await ocrRes.json();
+        extractedText = (ocrData.text || "").trim();
+      } else {
+        console.warn("[scan-image] OCR service returned non-OK status:", ocrRes.status);
+      }
+    } catch (ocrErr) {
+      console.warn("[scan-image] OCR service unreachable:", ocrErr.message);
+    }
+
+    // Step 2: If no text extracted, nothing to scan — allow through
+    if (!extractedText) {
+      console.log("[scan-image] No text extracted from image — ALLOW");
+      return res.json({
+        action: "ALLOW",
+        riskScore: 0,
+        reasons: ["No text detected in image"],
+        entities: [],
+        redactedText: null,
+        ocrText: "",
+      });
+    }
+
+    console.log("[scan-image] OCR extracted text:", extractedText.substring(0, 120), "...");
+
+    // Step 3: Check department-level block rule (same as /api/scan)
+    const rule = await Rule.findOne({ department });
+    if (rule && rule.action === "BLOCK") {
+      await Log.create({
+        originalMessage: `[IMAGE] ${extractedText}`,
+        redactedMessage: `[IMAGE] ${extractedText}`,
+        department,
+        wasRedacted: false,
+        wasBlocked: true,
+        blockReason: `Department "${department}" is blocked by admin policy`,
+        entitiesFound: [],
+        riskLevel: "HIGH",
+        source: source || "extension",
+      });
+      return res.json({
+        action: "BLOCK",
+        riskScore: 1.0,
+        reasons: [`Department "${department}" is blocked by admin policy`],
+        entities: [],
+        redactedText: null,
+        ocrText: extractedText,
+      });
+    }
+
+    // Step 4: Run the full scan pipeline on the OCR'd text
+    const policyResult = await scanPrompt(extractedText, { department, source });
+    const { action, riskScore, reasons, entities, redactedText } = policyResult;
+    const wasRedacted = action === "REDACT";
+
+    let riskLevel = "NONE";
+    if (riskScore >= 0.9) riskLevel = "HIGH";
+    else if (riskScore >= 0.4) riskLevel = "MEDIUM";
+    else if (riskScore > 0) riskLevel = "LOW";
+
+    await Log.create({
+      originalMessage: `[IMAGE] ${extractedText}`,
+      redactedMessage: wasRedacted ? `[IMAGE] ${redactedText || extractedText}` : `[IMAGE] ${extractedText}`,
+      department: department || "Unknown",
+      wasRedacted,
+      wasBlocked: action === "BLOCK",
+      entitiesFound: entities,
+      riskLevel,
+      source: source || "extension",
+    });
+
+    // Return same shape as /api/scan, plus ocrText for transparency
+    return res.json({
+      action,
+      riskScore,
+      reasons,
+      entities,
+      redactedText: redactedText || null,
+      ocrText: extractedText,
+    });
+  } catch (error) {
+    console.error("Error in /api/scan-image:", error.message);
+    res.status(500).json({ error: "Something went wrong" });
+  }
+});
+
+// ─────────────────────────────────────────
 // ROUTE 2 — Get Logs (for dashboard)
 // ─────────────────────────────────────────
 app.get("/api/logs", async (req, res) => {
