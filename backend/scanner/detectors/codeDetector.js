@@ -32,6 +32,13 @@ const CODE_CLUE_REGEXES = [
   { rx: /\bfunc\s+\w+\s*\(/, lang: "go" },
   { rx: /\b(?:SELECT|INSERT|UPDATE|DELETE)\s+.*\bFROM\b/i, lang: "sql" },
   { rx: /CREATE\s+TABLE\s+/i, lang: "sql" },
+  // Additional JS/TS patterns
+  { rx: /const\s+\w+\s*=\s*(?:async\s+)?\([^)]*\)\s*=>/, lang: "arrow-fn" },
+  { rx: /\breturn\s+[^;\n]{3,};/, lang: "return-stmt" },
+  { rx: /(?:const|let|var)\s+\w+\s*=\s*[^;\n]+;/, lang: "var-decl" },
+  { rx: /\bif\s*\([^)]+\)\s*\{/, lang: "control-flow" },
+  { rx: /\.(?:then|catch|finally)\s*\(/, lang: "promise-chain" },
+  { rx: /require\s*\(['"][^'"]+['"]\)/, lang: "require" },
 ];
 
 // Proprietary / confidential markers
@@ -61,9 +68,19 @@ function detectCode(text) {
     }
   }
 
-  // CODE_BLOCK: ≥6 lines AND ≥2 distinct code clues → likely a real code paste
+  // CODE_BLOCK detection — two tiers:
+  //  Tier A: ≥6 lines + ≥2 distinct clues + braces  → clear code paste
+  //  Tier B: ≥8 lines + ≥1 clue + braces            → single-function / algorithm paste
   const hasBraces = /[{}]/.test(normalized);
-  if (lineCount >= 6 && matchedClues.length >= 2 && hasBraces) {
+  const clueCount = matchedClues.length;
+
+  if (
+    hasBraces &&
+    (
+      (lineCount >= 6 && clueCount >= 2) ||
+      (lineCount >= 8 && clueCount >= 1)
+    )
+  ) {
     entities.push({
       type: "CODE_BLOCK",
       value: `[multi-line code block, ${lineCount} lines, clues: ${matchedClues.join(", ")}]`,

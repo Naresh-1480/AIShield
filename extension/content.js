@@ -16,8 +16,6 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
     if (host.includes("openai") || host.includes("chatgpt")) return "ChatGPT";
     if (host.includes("claude")) return "Claude";
     if (host.includes("gemini")) return "Gemini";
-    if (host.includes("copilot")) return "Copilot";
-    if (host.includes("perplexity")) return "Perplexity";
     return "Unknown";
   }
 
@@ -157,11 +155,16 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
     `;
 
     const isBlock = action === "BLOCK";
-    // REDACT uses red (serious), BLOCK also red but harder
-    const accent = "#ef4444";
-    const title = isBlock ? "⛔ Prompt Blocked" : "🔴 Sensitive Data Detected";
+    const isWarn  = action === "WARN";
+    const accent  = isWarn ? "#f59e0b" : "#ef4444";
+    const icon    = isBlock ? "🚫" : isWarn ? "⚠️" : "🔴";
+    const title   = isBlock ? "⛔ Prompt Blocked"
+                  : isWarn  ? "⚠️ Heads-up — Sensitive Details Detected"
+                  :           "🔴 Sensitive Data Detected";
     const subtitle = isBlock
       ? "This prompt contains critically sensitive data and cannot be sent."
+      : isWarn
+      ? "Your prompt contains some sensitive details. You can still send it, but consider whether this is intentional."
       : "Your prompt contains sensitive information. You can redact it before sending, or cancel.";
 
     const entitiesHtml = (entities || [])
@@ -191,7 +194,7 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
       <div style="background:#020617;border-radius:12px;border:1px solid #1f2937;padding:20px;max-width:460px;width:92%;color:#e5e7eb;box-shadow:0 20px 40px rgba(0,0,0,0.6);">
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
           <div style="width:26px;height:26px;border-radius:999px;background:${accent}1a;display:flex;align-items:center;justify-content:center;color:${accent};font-size:16px;">
-            ${isBlock ? "🚫" : "🔴"}
+            ${icon}
           </div>
           <div>
             <div style="font-size:16px;font-weight:600;">${title}</div>
@@ -219,6 +222,12 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
           ${
             isBlock
               ? ""
+              : isWarn
+              ? `
+          <button id="ai-privacy-send" style="padding:7px 14px;font-size:12px;border-radius:8px;border:none;background:${accent};color:#111827;font-weight:600;cursor:pointer;">
+            Send anyway
+          </button>
+        `
               : `
           <button id="ai-privacy-send" style="padding:7px 14px;font-size:12px;border-radius:8px;border:none;background:${accent};color:#111827;font-weight:600;cursor:pointer;">
             Send redacted text
@@ -291,17 +300,22 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
         return;
       }
 
-      // ── WARN: medium-risk, yellow toast, auto-sends ──────────────
+      // ── WARN: medium-risk, yellow modal — user decides ──────────
       if (action === "WARN") {
-        const warnReasons = (result.reasons || []).join(" · ");
-        showToast(
-          `⚠️ <strong>Note:</strong> This prompt has some details (${warnReasons}). Sending anyway.`,
-          "#f59e0b",
-          4000
-        );
-        window.__aiPrivacyProxyApprovedSend = true;
-        triggerSubmission(triggerType);
-        console.log("[extension] WARN: sending with advisory toast.");
+        showDecisionModal({
+          action: "WARN",
+          entities: result.entities || [],
+          redactedText: null,
+          onSendRedacted: () => {
+            // "Send anyway" — send the original prompt unchanged
+            window.__aiPrivacyProxyApprovedSend = true;
+            triggerSubmission(triggerType);
+            console.log("[extension] WARN: user chose to send anyway.");
+          },
+          onCancel: () => {
+            console.log("[extension] WARN: user cancelled send.");
+          },
+        });
         return;
       }
 

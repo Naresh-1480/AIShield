@@ -77,7 +77,7 @@ export default function Dashboard() {
   }
 
   // Platform counts from logs
-  const platforms = ["ChatGPT", "Claude", "Gemini", "Copilot", "Perplexity"];
+  const platforms = ["ChatGPT", "Claude", "Gemini"];
   const platformCounts = platforms.map(
     (p) =>
       logs.filter((l) => l.source?.toLowerCase().includes(p.toLowerCase()))

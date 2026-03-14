@@ -43,6 +43,14 @@ const PASSWORD_REGEX =
 const ENV_PASSWORD_REGEX =
   /(?:^|\s)(?:[A-Z][A-Z0-9_]*_)?(?:PASSWORD|PASSWD|PWD|SECRET|AUTH_TOKEN|ACCESS_TOKEN|PRIVATE_KEY)\s*=\s*([^\s'"]{4,})/gm;
 
+// Hardcoded secrets inside source code string literals
+// Catches: jwt.verify(token, "supersecretkey"), { secret: "mykey" }, password = "abc123"
+const JWT_HARDCODED_SECRET_REGEX =
+  /\bjwt\.(?:sign|verify)\s*\([^,)]+,\s*["']([^"'\s]{6,})["']/gi;
+
+const HARDCODED_CREDENTIAL_REGEX =
+  /\b(?:secret|password|passwd|pwd|apiKey|api_key|authToken|auth_token|privateKey|private_key)\s*[:=,]\s*["']([^"'\s]{4,})["']/gi;
+
 // ─── MEDIUM SEVERITY: INFRASTRUCTURE ──────────────────────────
 // Internal URLs: *.internal, *.local, *.corp, staging/dev subdomains
 const INTERNAL_URL_REGEX =
@@ -93,6 +101,18 @@ function detectSecrets(text) {
 
   // Env-var style credentials: DB_PASSWORD=xxx, APP_SECRET=xxx
   for (const match of text.matchAll(ENV_PASSWORD_REGEX)) {
+    if (match[1]) {
+      entities.push({ type: "PASSWORD", value: match[1] });
+    }
+  }
+
+  // Hardcoded secrets in source code: jwt.verify(token, "secret"), { secret: "xxx" }
+  for (const match of text.matchAll(JWT_HARDCODED_SECRET_REGEX)) {
+    if (match[1]) {
+      entities.push({ type: "PASSWORD", value: match[1] });
+    }
+  }
+  for (const match of text.matchAll(HARDCODED_CREDENTIAL_REGEX)) {
     if (match[1]) {
       entities.push({ type: "PASSWORD", value: match[1] });
     }
