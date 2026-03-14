@@ -1,0 +1,124 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        width: 280px;
+        background: #0f1117;
+        color: white;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        padding: 16px;
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #222;
+      }
+      .header span {
+        font-size: 20px;
+      }
+      .header h1 {
+        font-size: 14px;
+        font-weight: bold;
+      }
+      .header p {
+        font-size: 11px;
+        color: #888;
+      }
+      .status {
+        background: #111;
+        border-radius: 8px;
+        padding: 10px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #00cc66;
+      }
+      .dot.off {
+        background: #ff4444;
+      }
+      label {
+        font-size: 11px;
+        color: #888;
+        display: block;
+        margin-bottom: 4px;
+      }
+      select,
+      input {
+        width: 100%;
+        background: #1a1a2e;
+        border: 1px solid #333;
+        color: white;
+        padding: 8px;
+        border-radius: 6px;
+        font-size: 13px;
+        margin-bottom: 12px;
+      }
+      button {
+        width: 100%;
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 9px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: bold;
+        margin-bottom: 8px;
+      }
+      .dashboard-btn {
+        background: #111;
+        border: 1px solid #333;
+        color: #aaa;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <span>🛡️</span>
+      <div>
+        <h1>AI Privacy Proxy</h1>
+        <p>Protecting your data on AI platforms</p>
+      </div>
+    </div>
+
+    <div class="status">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">Checking backend...</span>
+    </div>
+
+    <label>Your Department</label>
+    <select id="department">
+      <option value="Unknown">Select Department</option>
+      <option value="Marketing">Marketing</option>
+      <option value="Engineering">Engineering</option>
+      <option value="HR">HR</option>
+      <option value="Finance">Finance</option>
+      <option value="Legal">Legal</option>
+      <option value="Sales">Sales</option>
+    </select>
+
+    <button id="saveBtn">Save Settings</button>
+    <button class="dashboard-btn" id="dashboardBtn">
+      Open Admin Dashboard →
+    </button>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

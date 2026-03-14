@@ -1,0 +1,21 @@
+# Bytecamp 1 – ML inference service dependencies
+# Run: pip install -r requirements.txt
+
+# Web framework and server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Request/response validation
+pydantic>=2.0.0
+
+# PII detection and anonymization (Presidio)
+presidio-analyzer>=2.2.0
+presidio-anonymizer>=2.2.0
+
+# Contextual NER (GLiNER)
+gliner>=0.2.0
+
+# Intent classification (Hugging Face fallback optional)
+transformers>=4.36.0
+torch>=2.0.0
+accelerate>=0.25.0
