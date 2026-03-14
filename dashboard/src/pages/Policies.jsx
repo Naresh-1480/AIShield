@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
-const API = "http://localhost:5000";
+const API = "http://localhost:3000";
 
 const DEPARTMENTS = [
   "Engineering",

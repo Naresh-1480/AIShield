@@ -1,0 +1,57 @@
+{
+  "name": "ai-privacy-guard",
+  "displayName": "AI Privacy Guard",
+  "description": "Secure AI chat inside VS Code that routes prompts through your AI Privacy Proxy backend.",
+  "version": "0.0.1",
+  "publisher": "your-name-or-org",
+  "engines": {
+    "vscode": "^1.88.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:aiPrivacyGuard.chatView",
+    "onCommand:aiPrivacyGuard.openChat"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiPrivacyGuard.openChat",
+        "title": "Open AI Privacy Guard Chat",
+        "category": "AI Privacy Guard"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aiPrivacyGuard",
+          "title": "AI Privacy Guard",
+          "icon": "media/chat-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "aiPrivacyGuard": [
+        {
+          "id": "aiPrivacyGuard.chatView",
+          "name": "AI Privacy Guard",
+          "type": "webview"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "npx tsc -p ./",
+    "watch": "npx tsc -watch -p ./",
+    "lint": "echo \"No lint configured\"",
+    "test": "echo \"No tests configured\""
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.88.0",
+    "typescript": "^5.4.0"
+  }
+}

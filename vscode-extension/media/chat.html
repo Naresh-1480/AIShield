@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Privacy Guard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" type="text/css" href="./chat.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="apg-header">
+      <h1>AI Privacy Guard</h1>
+      <div id="status-indicator" class="status status-idle">Idle</div>
+    </header>
+
+    <main class="apg-main">
+      <section id="chat-history" class="chat-history" aria-label="Chat history"></section>
+    </main>
+
+    <footer class="apg-footer">
+      <div class="input-row">
+        <textarea id="prompt-input" rows="3" placeholder="Ask your question..."></textarea>
+        <button id="send-button" type="button">Send</button>
+      </div>
+      <div class="decision-row">
+        <span class="decision-label">Decision:</span>
+        <span id="decision-indicator" class="decision decision-idle">N/A</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="./chat.js"></script>
+</body>
+</html>
+

@@ -1,7 +1,7 @@
 // Check backend status
 async function checkBackend() {
   try {
-    const res = await fetch("http://localhost:5000/api/stats");
+    const res = await fetch("http://localhost:3000/api/stats");
     if (res.ok) {
       document.getElementById("statusDot").classList.remove("off");
       document.getElementById("statusText").textContent = "Proxy Active ✓";

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
-const API = "http://localhost:5000";
+const API = "http://localhost:3000";
 
 export default function Logs() {
   const [logs, setLogs] = useState([]);
@@ -104,7 +104,9 @@ export default function Logs() {
                 </div>
 
                 <p className="text-sm text-gray-300 truncate mb-2">
-                  {log.originalMessage?.slice(0, 120)}...
+                  {log.originalMessage?.length > 120
+                    ? log.originalMessage.slice(0, 120) + "..."
+                    : log.originalMessage}
                 </p>
 
                 {log.wasRedacted && log.redactedMessage && (

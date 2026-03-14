@@ -20,25 +20,30 @@ except ImportError:
     AnonymizerEngine = None  # type: ignore
     OperatorConfig = None  # type: ignore
 
+# Module-level singletons — created once, reused on every request.
+_ANALYZER = None
+_ANONYMIZER = None
+if PRESIDIO_AVAILABLE:
+    try:
+        _ANALYZER = AnalyzerEngine()
+        _ANONYMIZER = AnonymizerEngine()
+    except Exception:
+        _ANALYZER = None
+        _ANONYMIZER = None
+
 
 def _get_analyzer() -> "AnalyzerEngine | None":
-    """Lazy-init analyzer; returns None if Presidio is not available."""
+    """Return cached analyzer; returns None if Presidio is not available."""
     if not PRESIDIO_AVAILABLE:
         return None
-    try:
-        return AnalyzerEngine()
-    except Exception:
-        return None
+    return _ANALYZER
 
 
 def _get_anonymizer() -> "AnonymizerEngine | None":
-    """Lazy-init anonymizer; returns None if Presidio is not available."""
+    """Return cached anonymizer; returns None if Presidio is not available."""
     if not PRESIDIO_AVAILABLE:
         return None
-    try:
-        return AnonymizerEngine()
-    except Exception:
-        return None
+    return _ANONYMIZER
 
 
 def analyze_pii(text: str) -> list[dict[str, Any]]:

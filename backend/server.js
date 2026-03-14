@@ -22,7 +22,8 @@ mongoose
 app.post("/api/scan", async (req, res) => {
   const { message, text, department, source } = req.body;
 
-  const rawText = typeof message === "string" && message.length > 0 ? message : text;
+  const rawText =
+    typeof message === "string" && message.length > 0 ? message : text;
 
   if (!rawText) {
     return res.status(400).json({ error: "No message provided" });
@@ -59,7 +60,7 @@ app.post("/api/scan", async (req, res) => {
     });
 
     const { action, riskScore, reasons, entities, redactedText } = policyResult;
-    const wasRedacted = action === "REDACT" || action === "BLOCK";
+    const wasRedacted = action === "REDACT";
 
     if (Array.isArray(entities) && entities.length > 0) {
       console.log("[backend] Detected entities:", entities);
@@ -154,6 +155,117 @@ app.delete("/api/admin/reset", async (req, res) => {
   } catch (err) {
     console.error("Reset error:", err);
     res.status(500).json({ error: "Failed to reset data" });
+  }
+});
+
+// ─────────────────────────────────────────
+// ROUTE 6 — Secure chat endpoint for VS Code extension
+// ─────────────────────────────────────────
+app.post("/secure-chat", async (req, res) => {
+  const { prompt } = req.body || {};
+
+  if (typeof prompt !== "string" || !prompt.trim()) {
+    return res.status(400).json({ error: "Prompt is required" });
+  }
+
+  try {
+    const policyResult = await scanPrompt(prompt, {
+      source: "vscode-extension",
+    });
+
+    const { action, riskScore, reasons, redactedText, entities } = policyResult;
+
+    if (action === "BLOCK") {
+      return res.json({
+        decision: "BLOCK",
+        reason:
+          Array.isArray(reasons) && reasons.length > 0
+            ? reasons.join("; ")
+            : "Blocked by policy",
+        risk_score: riskScore ?? null,
+        entities: entities ?? [],
+      });
+    }
+
+    const finalPrompt =
+      action === "REDACT" &&
+      typeof redactedText === "string" &&
+      redactedText.length > 0
+        ? redactedText
+        : prompt;
+
+    const featherlessKey = process.env.FEATHERLESS_API_KEY;
+    if (!featherlessKey) {
+      console.error("[secure-chat] Missing FEATHERLESS_API_KEY in environment");
+      return res.status(500).json({
+        error: "Featherless API key not configured",
+      });
+    }
+
+    const modelId =
+      process.env.FEATHERLESS_MODEL || "deepseek-ai/DeepSeek-V3.2";
+
+    const featherlessResponse = await fetch(
+      "https://api.featherless.ai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${featherlessKey}`,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a helpful coding assistant running inside VS Code. Be concise and avoid markdown unless necessary.",
+            },
+            {
+              role: "user",
+              content: finalPrompt,
+            },
+          ],
+        }),
+      },
+    );
+
+    if (!featherlessResponse.ok) {
+      const text = await featherlessResponse.text().catch(() => "");
+      console.error(
+        "[secure-chat] Featherless error:",
+        featherlessResponse.status,
+        text,
+      );
+      return res.status(502).json({
+        error: "Featherless API request failed",
+      });
+    }
+
+    const featherlessData = await featherlessResponse.json();
+    const aiMessage =
+      featherlessData.choices &&
+      featherlessData.choices[0] &&
+      featherlessData.choices[0].message &&
+      featherlessData.choices[0].message.content
+        ? featherlessData.choices[0].message.content
+        : "";
+
+    return res.json({
+      decision: action === "REDACT" ? "REDACT" : "ALLOW",
+      redacted_prompt: action === "REDACT" ? redactedText || null : null,
+      risk_score: riskScore ?? null,
+      reason:
+        Array.isArray(reasons) && reasons.length > 0
+          ? reasons.join("; ")
+          : null,
+      response: aiMessage,
+    });
+  } catch (error) {
+    console.error("Error in /secure-chat:", error);
+    return res.status(500).json({
+      error: "Something went wrong in secure chat pipeline",
+    });
   }
 });
 

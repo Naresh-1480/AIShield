@@ -1,4 +1,4 @@
-const BACKEND_URL = "http://localhost:5000/api/scan";
+const BACKEND_URL = "http://localhost:3000/api/scan";
 
 // Prevent multiple initializations if content script is injected repeatedly
 if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
@@ -89,8 +89,8 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
     }
   }
 
-  // Bottom-right toast for ALLOW and general info
-  function showToast(message, color = "#16a34a") {
+  // Bottom-right toast for ALLOW / WARN / general info
+  function showToast(message, color = "#16a34a", duration = 2200) {
     try {
       let toast = document.getElementById("ai-scanner-toast");
       if (!toast) {
@@ -100,7 +100,7 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
           position: fixed;
           bottom: 16px;
           right: 16px;
-          max-width: 260px;
+          max-width: 300px;
           background: rgba(15,23,42,0.95);
           color: #fff;
           padding: 10px 14px;
@@ -116,13 +116,13 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
         document.body.appendChild(toast);
       }
       toast.style.borderLeftColor = color;
-      toast.textContent = message;
+      toast.innerHTML = message;
       toast.style.opacity = "1";
 
       clearTimeout(toast.__hideTimer);
       toast.__hideTimer = setTimeout(() => {
         toast.style.opacity = "0";
-      }, 2200);
+      }, duration);
     } catch (e) {
       // best-effort only
     }
@@ -157,11 +157,12 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
     `;
 
     const isBlock = action === "BLOCK";
-    const accent = isBlock ? "#ef4444" : "#facc15";
-    const title = isBlock ? "Prompt blocked" : "Sensitive data detected";
+    // REDACT uses red (serious), BLOCK also red but harder
+    const accent = "#ef4444";
+    const title = isBlock ? "⛔ Prompt Blocked" : "🔴 Sensitive Data Detected";
     const subtitle = isBlock
-      ? "This prompt contains highly sensitive data and cannot be sent."
-      : "Review the redacted version below before sending.";
+      ? "This prompt contains critically sensitive data and cannot be sent."
+      : "Your prompt contains sensitive information. You can redact it before sending, or cancel.";
 
     const entitiesHtml = (entities || [])
       .map((e) => {
@@ -190,7 +191,7 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
       <div style="background:#020617;border-radius:12px;border:1px solid #1f2937;padding:20px;max-width:460px;width:92%;color:#e5e7eb;box-shadow:0 20px 40px rgba(0,0,0,0.6);">
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
           <div style="width:26px;height:26px;border-radius:999px;background:${accent}1a;display:flex;align-items:center;justify-content:center;color:${accent};font-size:16px;">
-            ${isBlock ? "⛔" : "⚠️"}
+            ${isBlock ? "🚫" : "🔴"}
           </div>
           <div>
             <div style="font-size:16px;font-weight:600;">${title}</div>
@@ -281,15 +282,30 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
       const action = result.action || "ALLOW";
       console.log("[extension] Final action:", action);
 
+      // ── ALLOW: clean prompt, silent green flash ──────────────────
       if (action === "ALLOW") {
-        showToast("Prompt allowed", "#22c55e");
-        // Approve exactly one send; no UI modal.
+        showToast("✅ Prompt is safe", "#22c55e", 1800);
         window.__aiPrivacyProxyApprovedSend = true;
         triggerSubmission(triggerType);
         console.log("[extension] Approved send (ALLOW).");
         return;
       }
 
+      // ── WARN: medium-risk, yellow toast, auto-sends ──────────────
+      if (action === "WARN") {
+        const warnReasons = (result.reasons || []).join(" · ");
+        showToast(
+          `⚠️ <strong>Note:</strong> This prompt has some details (${warnReasons}). Sending anyway.`,
+          "#f59e0b",
+          4000
+        );
+        window.__aiPrivacyProxyApprovedSend = true;
+        triggerSubmission(triggerType);
+        console.log("[extension] WARN: sending with advisory toast.");
+        return;
+      }
+
+      // ── BLOCK: critically sensitive, hard block ──────────────────
       if (action === "BLOCK") {
         showDecisionModal({
           action: "BLOCK",
@@ -302,6 +318,7 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
         return;
       }
 
+      // ── REDACT: critical, red modal — redact & send or cancel ───
       if (action === "REDACT") {
         const redacted = result.redactedText || prompt;
         showDecisionModal({
@@ -309,11 +326,8 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
           entities: result.entities || [],
           redactedText: redacted,
           onSendRedacted: () => {
-            // First, inject the redacted text and fire input/change so the site
-            // updates its internal state, then trigger the approved send slightly later.
             setPromptText(redacted);
             setTimeout(() => {
-              // Approve exactly one send with redacted text.
               window.__aiPrivacyProxyApprovedSend = true;
               triggerSubmission(triggerType);
               console.log("[extension] Approved send of redacted text.");

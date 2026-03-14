@@ -13,7 +13,14 @@ import os
 from typing import Any
 
 # Optional; service is disabled if GLiNER is not installed or fails to load.
+# Check availability at import-time (module top) so _get_model() always sees the correct flag.
 GLINER_AVAILABLE = False
+try:
+    from gliner import GLiNER  # noqa: F401
+    GLINER_AVAILABLE = True
+except ImportError:
+    GLINER_AVAILABLE = False
+
 _gliner_model = None
 
 # Allow GLiNER to be skipped completely via env flag.
@@ -24,8 +31,8 @@ DISABLE_GLINER = os.getenv("ML_SERVICE_DISABLE_GLINER", "").lower() in {
     "on",
 }
 
+
 CONTEXTUAL_LABELS = [
-    "game_id",
     "employee_id",
     "project_name",
     "repository",
@@ -98,12 +105,4 @@ def extract_contextual_entities(text: str) -> list[dict[str, Any]]:
     except Exception:
         print("GLiNER skipped or failed")
         return []
-
-
-# Mark GLiNER as available only if import succeeds (for model loading later).
-try:
-    from gliner import GLiNER  # noqa: F401
-    GLINER_AVAILABLE = True
-except ImportError:
-    GLINER_AVAILABLE = False
 

@@ -1,52 +1,72 @@
 /**
- * Secret detector.
+ * Secret & Internal Infrastructure Detector.
  *
- * Single source of truth for high‑severity secrets and credentials:
- * - API keys (OpenAI, AWS, GitHub, Stripe, Slack, generic "api key = ...")
- * - Password‑style values
- * - Private keys
- * - Database URLs / connection strings
- * - JWTs
+ * Detects enterprise-critical secrets and infrastructure details:
  *
- * NOTE:
- *  - This module is used directly by the main scanner pipeline.
- *  - Other legacy detectors (e.g. credentialDetector) should delegate to this
- *    module instead of re‑implementing their own logic.
+ * HIGH SEVERITY (→ BLOCK):
+ *  - API keys (OpenAI, AWS, GitHub, Stripe, Slack, generic)
+ *  - Passwords / auth tokens
+ *  - Private keys (PEM)
+ *  - Database connection strings
+ *  - JWTs
+ *
+ * MEDIUM SEVERITY (→ REDACT):
+ *  - Internal URLs / endpoints (intranet, staging, internal APIs)
+ *  - Cloud resource identifiers (ARN, S3 buckets, GCP projects)
+ *  - Server hostnames / internal domains
+ *  - Environment variables with values
  */
 
-// OpenAI: sk- or sk-proj- prefix, then alphanumeric/underscore/hyphen (min 20 chars)
+// ─── HIGH SEVERITY SECRETS ────────────────────────────────────
 const OPENAI_KEY_REGEX = /sk-[a-zA-Z0-9_-]{20,}/g;
 const AWS_KEY_REGEX = /AKIA[0-9A-Z]{16}/g;
 const GITHUB_TOKEN_REGEX = /ghp_[A-Za-z0-9]{36}/g;
-const JWT_REGEX =
-  /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
+const JWT_REGEX = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g;
 const PRIVATE_KEY_REGEX =
-  /-----BEGIN PRIVATE KEY-----[\s\S]*?-----END PRIVATE KEY-----/g;
+  /-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/g;
 const DATABASE_URL_REGEX =
-  /\b(?:mongodb|postgres|mysql):\/\/[^\s'"]+/g;
-
-// Stripe: sk_live_, pk_live_, sk_test_, pk_test_ + 24+ chars
+  /\b(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis|mssql):\/\/[^\s'"]+/g;
 const STRIPE_KEY_REGEX = /(?:sk_live_|pk_live_|sk_test_|pk_test_)[a-zA-Z0-9]{24,}/g;
-// Slack: xoxb-, xoxp-, xoxa-, xoxe-
 const SLACK_TOKEN_REGEX = /xox[bpae]-[a-zA-Z0-9_-]{8,}/g;
-// Generic "api key" / "apikey" / "api_key" followed by = or : and a long token (20+ chars)
-const GENERIC_API_KEY_REGEX =
-  /\b(?:api[_\s-]?key|apikey)\s*[:=]\s*["']?([a-zA-Z0-9_\-.]{20,})/gi;
 
-// Password-like secrets, focusing on the secret token (group 2)
+// Generic "api key" / "apikey" / "api_key" = value (min 16 chars for the token)
+const GENERIC_API_KEY_REGEX =
+  /\b(?:api[_\s-]?key|apikey|api[_\s-]?secret|api[_\s-]?token)\s*[:=]\s*["']?([a-zA-Z0-9_\-.]{16,})/gi;
+
+// Password-like in natural language: "password = xxx", "password: xxx", "my password is xxx"
+// Separator allows optional '= ', ': ', or 'is ' between the keyword and the value.
 const PASSWORD_REGEX =
-  /\b(password|passwd|pwd)\b[^A-Za-z0-9]{0,10}([^\s'"]{4,})/gi;
+  /\b(password|passwd|pwd|auth_token|access_token|bearer)\b[\s:='"]*(?:is\s+)?([^\s'"]{4,})/gi;
+
+// Env-var style credentials: DB_PASSWORD=xxx, MYSQL_ROOT_PASSWORD=secret, APP_SECRET_KEY=abc123
+// \b won't fire before _PASSWORD because _ is a word char — this catches it explicitly.
+const ENV_PASSWORD_REGEX =
+  /(?:^|\s)(?:[A-Z][A-Z0-9_]*_)?(?:PASSWORD|PASSWD|PWD|SECRET|AUTH_TOKEN|ACCESS_TOKEN|PRIVATE_KEY)\s*=\s*([^\s'"]{4,})/gm;
+
+// ─── MEDIUM SEVERITY: INFRASTRUCTURE ──────────────────────────
+// Internal URLs: *.internal, *.local, *.corp, staging/dev subdomains
+const INTERNAL_URL_REGEX =
+  /\bhttps?:\/\/[a-zA-Z0-9._-]+\.(?:internal|local|corp|intranet|staging|dev)\b[^\s]*/gi;
+
+// AWS ARN — account ID segment is optional (S3 ARNs can be account-less)
+const AWS_ARN_REGEX = /\barn:aws:[a-zA-Z0-9*_-]+:[a-z0-9-]*:(?:\d{12})?:[^\s'"]+/g;
+
+// S3 bucket references
+const S3_BUCKET_REGEX = /\b(?:s3:\/\/[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]|[a-z0-9][a-z0-9.-]+\.s3\.amazonaws\.com)\b/gi;
+
+// Server hostnames / internal domains
+const INTERNAL_HOSTNAME_REGEX =
+  /\b(?:(?:prod|staging|dev|internal|db|api|admin|vpn|jump|bastion)[.-])[a-zA-Z0-9._-]+\.[a-zA-Z]{2,}\b/gi;
+
+// Docker / K8s references
+const CONTAINER_REGEX =
+  /\b(?:docker\.io|gcr\.io|ecr\.[a-z-]+\.amazonaws\.com)\/[a-zA-Z0-9._/-]+(?::[a-zA-Z0-9._-]+)?\b/g;
 
 function buildEntities(type, matches) {
   const entities = [];
   for (const match of matches) {
-    // For PASSWORD_REGEX we want group 2 (the actual secret token),
-    // for others we take the entire match.
     const value = type === "PASSWORD" && match[2] ? match[2] : match[0];
-    entities.push({
-      type,
-      value,
-    });
+    entities.push({ type, value });
   }
   return entities;
 }
@@ -58,6 +78,7 @@ function detectSecrets(text) {
 
   const entities = [];
 
+  // HIGH severity secrets
   entities.push(
     ...buildEntities("API_KEY", text.matchAll(OPENAI_KEY_REGEX)),
     ...buildEntities("API_KEY", text.matchAll(AWS_KEY_REGEX)),
@@ -70,15 +91,31 @@ function detectSecrets(text) {
     ...buildEntities("PASSWORD", text.matchAll(PASSWORD_REGEX)),
   );
 
-  // Generic "api key = xxx" / "apikey: xxx" — use captured token (group 1) as value
+  // Env-var style credentials: DB_PASSWORD=xxx, APP_SECRET=xxx
+  for (const match of text.matchAll(ENV_PASSWORD_REGEX)) {
+    if (match[1]) {
+      entities.push({ type: "PASSWORD", value: match[1] });
+    }
+  }
+
+  // Generic api key = xxx
   for (const match of text.matchAll(GENERIC_API_KEY_REGEX)) {
     if (match[1]) {
       entities.push({ type: "API_KEY", value: match[1] });
     }
   }
 
+  // MEDIUM severity: infrastructure
+  entities.push(
+    ...buildEntities("INTERNAL_URL", text.matchAll(INTERNAL_URL_REGEX)),
+    ...buildEntities("AWS_ARN", text.matchAll(AWS_ARN_REGEX)),
+    ...buildEntities("S3_BUCKET", text.matchAll(S3_BUCKET_REGEX)),
+    ...buildEntities("INTERNAL_HOSTNAME", text.matchAll(INTERNAL_HOSTNAME_REGEX)),
+    ...buildEntities("CONTAINER_IMAGE", text.matchAll(CONTAINER_REGEX)),
+  );
+
   if (entities.length > 0) {
-    console.log("[scanner] Secret detector entities:", entities);
+    console.log("[scanner] Secret/infra detector entities:", entities);
   }
 
   return entities;

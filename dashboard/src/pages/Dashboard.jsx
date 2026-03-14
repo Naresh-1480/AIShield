@@ -20,7 +20,7 @@ ChartJS.register(
   BarElement,
 );
 
-const API = "http://localhost:5000";
+const API = "http://localhost:3000";
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -192,7 +192,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-6 gap-3 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 mb-8">
         {statCards.map((card, i) => (
           <div
             key={i}

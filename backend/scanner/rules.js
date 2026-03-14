@@ -1,21 +1,45 @@
+/**
+ * Risk classification rules for entity types.
+ *
+ * Enterprise threat model — maps entity types to risk levels.
+ * Consumer-focused entities (credit card, Aadhaar, passport, DOB, IP) removed.
+ *
+ *  HIGH → BLOCK: secrets, credentials, SSN in HR context
+ *  MEDIUM → REDACT: employee/client PII, internal infrastructure, code leaks
+ *  LOW: informational only (general person/location from ML)
+ */
+
 const HIGH_RISK_TYPES = new Set([
-  "SSN",
-  "CREDIT_CARD",
   "API_KEY",
   "PRIVATE_KEY",
   "PASSWORD",
-  "INTELLECTUAL_PROPERTY",
+  "DATABASE_URL",
+  "SSN",
+  "US_SSN",
+  "CONFIDENTIAL_MARKER",
 ]);
 
 const MEDIUM_RISK_TYPES = new Set([
   "EMAIL",
+  "EMAIL_ADDRESS",
   "PHONE",
+  "PHONE_NUMBER",
+  "INTERNAL_URL",
+  "AWS_ARN",
+  "S3_BUCKET",
+  "INTERNAL_HOSTNAME",
+  "CONTAINER_IMAGE",
+  "CODE_BLOCK",
+  "ENV_CONFIG",
+  "DATABASE_SCHEMA",
   "SOURCE_CODE",
-  "DATABASE_URL",
-  "CONFIDENTIAL_DATA",
 ]);
 
-const LOW_RISK_TYPES = new Set(["NAME", "IP_ADDRESS"]);
+const LOW_RISK_TYPES = new Set([
+  "PERSON",
+  "LOCATION",
+  "CODE_SYNTAX",
+]);
 
 const LEVEL_PRIORITY = {
   NONE: 0,
@@ -54,7 +78,6 @@ function calculateRiskScoreAndLevel(entities) {
   }
 
   const score = Math.max(0, Math.min(100, totalWeight * 10));
-
   const finalLevel = maxLevel === "NONE" && score > 0 ? "LOW" : maxLevel;
 
   return {
@@ -70,4 +93,3 @@ module.exports = {
   getEntityRisk,
   calculateRiskScoreAndLevel,
 };
-
