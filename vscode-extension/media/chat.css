@@ -11,6 +11,8 @@
   --danger-soft: rgba(248, 113, 113, 0.15);
   --warning: #facc15;
   --warning-soft: rgba(250, 204, 21, 0.15);
+  --warn-orange: #f59e0b;
+  --warn-orange-soft: rgba(245, 158, 11, 0.15);
   --safe: #4ade80;
   --safe-soft: rgba(74, 222, 128, 0.12);
   --radius-lg: 10px;
@@ -92,6 +94,12 @@ body {
   border-color: var(--safe);
   background: var(--safe-soft);
   color: var(--safe);
+}
+
+.status-warn {
+  border-color: var(--warn-orange);
+  background: var(--warn-orange-soft);
+  color: var(--warn-orange);
 }
 
 .status-redacted {
@@ -206,6 +214,11 @@ body {
 .decision-safe {
   background: var(--safe-soft);
   color: var(--safe);
+}
+
+.decision-warned {
+  background: var(--warn-orange-soft);
+  color: var(--warn-orange);
 }
 
 .decision-redacted {
@@ -349,5 +362,161 @@ body {
   #prompt-input {
     font-size: 11px;
   }
+}
+
+/* ── Modal overlay ─────────────────────────────────────────────────────────── */
+
+.apg-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.88);
+  display: none;  /* shown via JS: element.style.display = 'flex' */
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  font-family: system-ui, -apple-system, sans-serif;
+  backdrop-filter: blur(2px);
+}
+
+.apg-modal-card {
+  background: #020617;
+  border-radius: 12px;
+  border: 1px solid #1f2937;
+  padding: 18px;
+  max-width: 440px;
+  width: 94%;
+  color: #e5e7eb;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.apg-modal-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.apg-modal-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.apg-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.apg-modal-subtitle {
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.4;
+}
+
+.apg-section-label {
+  font-size: 10px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 5px;
+}
+
+.apg-entities-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.apg-entities-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.apg-entity-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #020617;
+  border: 1px solid #1f2937;
+  color: #e5e7eb;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.apg-entity-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.apg-redacted-box {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #020617;
+  border: 1px solid #1f2937;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.apg-redacted-label {
+  font-size: 10px;
+  color: #6b7280;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.apg-redacted-text {
+  font-size: 12px;
+  color: #fef9c3;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+}
+
+.apg-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.apg-btn-cancel {
+  padding: 7px 14px;
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid #374151;
+  background: #020617;
+  color: #e5e7eb;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.apg-btn-cancel:hover {
+  background: #111827;
+}
+
+.apg-btn-confirm {
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  color: #111827;
+  cursor: pointer;
+  transition: filter 0.12s;
+}
+
+.apg-btn-confirm:hover {
+  filter: brightness(1.1);
 }
 

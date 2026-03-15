@@ -36,8 +36,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
+const BACKEND_URL = 'http://localhost:3000';
 function activate(context) {
-    const provider = new AiPrivacyGuardViewProvider(context.extensionUri);
+    const provider = new AiPrivacyGuardViewProvider(context.extensionUri, context);
     context.subscriptions.push(vscode.window.registerWebviewViewProvider(AiPrivacyGuardViewProvider.viewType, provider));
     context.subscriptions.push(vscode.commands.registerCommand('aiPrivacyGuard.openChat', async () => {
         await vscode.commands.executeCommand('workbench.view.extension.aiPrivacyGuard');
@@ -46,8 +49,9 @@ function activate(context) {
 }
 function deactivate() { }
 class AiPrivacyGuardViewProvider {
-    constructor(extensionUri) {
+    constructor(extensionUri, context) {
         this.extensionUri = extensionUri;
+        this.context = context;
     }
     resolveWebviewView(webviewView) {
         const webview = webviewView.webview;
@@ -60,52 +64,88 @@ class AiPrivacyGuardViewProvider {
     }
     setupMessageListener(webview) {
         webview.onDidReceiveMessage(async (message) => {
-            if (message?.type === 'sendPrompt') {
+            // ── Phase 1: scan the prompt, return action/entities/redactedText ──
+            if (message?.type === 'scanPrompt') {
                 const prompt = message.prompt ?? '';
+                const department = message.department ?? 'Unknown';
                 if (!prompt.trim()) {
-                    webview.postMessage({
-                        type: 'chatResult',
-                        error: 'Prompt cannot be empty.'
-                    });
+                    webview.postMessage({ type: 'scanResult', error: 'Prompt cannot be empty.' });
                     return;
                 }
                 try {
-                    const response = await fetch('http://localhost:3000/secure-chat', {
+                    const response = await fetch(`${BACKEND_URL}/api/scan`, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ prompt })
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            text: prompt,
+                            message: prompt,
+                            department,
+                            source: 'vscode-extension'
+                        })
                     });
                     if (!response.ok) {
                         const text = await response.text().catch(() => '');
-                        throw new Error(`Backend error (${response.status}): ${text || response.statusText}`);
+                        throw new Error(`Scan error (${response.status}): ${text || response.statusText}`);
                     }
                     const data = (await response.json());
-                    const decision = data.decision ?? 'UNKNOWN';
                     webview.postMessage({
-                        type: 'chatResult',
-                        decision,
-                        prompt,
-                        redactedPrompt: data.redacted_prompt ?? null,
-                        reason: data.reason ?? null,
-                        riskScore: data.risk_score ?? null,
-                        aiResponse: data.response ?? null
+                        type: 'scanResult',
+                        action: data.action ?? 'ALLOW',
+                        entities: data.entities ?? [],
+                        redactedText: data.redactedText ?? null,
+                        riskScore: data.riskScore ?? null,
+                        reasons: data.reasons ?? []
                     });
                 }
                 catch (err) {
+                    // On scanner failure allow through (same behaviour as Chrome extension)
                     webview.postMessage({
-                        type: 'chatResult',
-                        error: err?.message ??
-                            'Failed to contact AI Privacy Proxy backend at http://localhost:3000/secure-chat.'
+                        type: 'scanResult',
+                        action: 'ALLOW',
+                        entities: [],
+                        redactedText: null,
+                        error: err?.message ?? 'Scanner unreachable — prompt allowed through.'
                     });
                 }
+                return;
+            }
+            // ── Phase 2: user approved, send the final prompt to the LLM ────────
+            if (message?.type === 'sendToAI') {
+                const prompt = message.prompt ?? '';
+                const department = message.department ?? 'Unknown';
+                if (!prompt.trim()) {
+                    webview.postMessage({ type: 'aiResult', error: 'Prompt is empty.' });
+                    return;
+                }
+                try {
+                    const response = await fetch(`${BACKEND_URL}/api/chat-only`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt, department })
+                    });
+                    if (!response.ok) {
+                        const text = await response.text().catch(() => '');
+                        throw new Error(`AI error (${response.status}): ${text || response.statusText}`);
+                    }
+                    const data = (await response.json());
+                    webview.postMessage({ type: 'aiResult', response: data.response ?? '' });
+                }
+                catch (err) {
+                    webview.postMessage({
+                        type: 'aiResult',
+                        error: err?.message ?? 'Failed to contact AI backend.'
+                    });
+                }
+                return;
             }
         });
     }
     getHtmlForWebview(webview) {
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', 'chat.js'));
-        const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', 'chat.css'));
+        // Read CSS from disk and inline it — VSCode's nonce-based CSP blocks <link>
+        // stylesheets, but allows inline <style nonce="..."> tags.
+        const cssPath = path.join(this.extensionUri.fsPath, 'media', 'chat.css');
+        const cssContent = fs.readFileSync(cssPath, 'utf8');
         const nonce = getNonce();
         const csp = [
             "default-src 'none'",
@@ -120,7 +160,7 @@ class AiPrivacyGuardViewProvider {
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Privacy Guard</title>
-  <link rel="stylesheet" type="text/css" href="${styleUri}" nonce="${nonce}">
+  <style nonce="${nonce}">${cssContent}</style>
 </head>
 <body>
   <div id="app">
@@ -144,6 +184,9 @@ class AiPrivacyGuardViewProvider {
       </div>
     </footer>
   </div>
+
+  <!-- Decision modal (hidden by default via CSS) -->
+  <div id="apg-modal-overlay" class="apg-modal-overlay" role="dialog" aria-modal="true"></div>
 
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
