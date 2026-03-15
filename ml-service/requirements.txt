@@ -19,3 +19,8 @@ gliner>=0.2.0
 transformers>=4.36.0
 torch>=2.0.0
 accelerate>=0.25.0
+
+# OCR (image text extraction)
+easyocr>=1.7.0
+Pillow>=10.0.0
+numpy>=1.24.0

@@ -34,6 +34,7 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
     'button[type="submit"]',
   ];
 
+  // Finds the prompt element only if it already has text (used for reading)
   function getPromptElement() {
     for (const selector of PROMPT_SELECTORS) {
       const el = document.querySelector(selector);
@@ -49,6 +50,15 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
     return null;
   }
 
+  // Finds the prompt element regardless of whether it has text (used for writing)
+  function findPromptElement() {
+    for (const selector of PROMPT_SELECTORS) {
+      const el = document.querySelector(selector);
+      if (el) return el;
+    }
+    return null;
+  }
+
   function getPromptText() {
     const el = getPromptElement();
     if (!el) return "";
@@ -58,34 +68,53 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
   }
 
   function setPromptText(text) {
-    const el = getPromptElement();
-    if (!el) return;
-    if (el.value !== undefined) {
+    const el = findPromptElement(); // works even when box is empty
+    if (!el) {
+      console.warn("[extension] setPromptText: could not find prompt element");
+      return;
+    }
+
+    // ── textarea / input ─────────────────────────────────────────────────
+    if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") {
       const proto =
         el.tagName === "TEXTAREA"
           ? window.HTMLTextAreaElement.prototype
           : window.HTMLInputElement.prototype;
       const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-      if (setter) {
-        setter.call(el, text);
-      } else {
-        el.value = text;
-      }
+      if (setter) setter.call(el, text);
+      else el.value = text;
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new Event("change", { bubbles: true }));
-    } else {
+      return;
+    }
+
+    // ── contenteditable div (ChatGPT, Claude, Gemini) ────────────────────
+    // React intercepts native browser events, NOT direct DOM mutations.
+    // document.execCommand('insertText') triggers the native browser input
+    // flow that React hooks into — this is the only reliable approach.
+    el.focus();
+
+    // Select all existing content so execCommand replaces it cleanly
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    // Insert text — replaces selection and fires React's onChange chain
+    const inserted = document.execCommand("insertText", false, text);
+
+    if (!inserted) {
+      // Fallback: direct mutation + manual InputEvent
       el.innerText = text;
-      el.textContent = text;
-      el.dispatchEvent(
-        new InputEvent("input", {
-          bubbles: true,
-          data: text,
-          inputType: "insertText",
-        }),
-      );
-      el.dispatchEvent(new Event("change", { bubbles: true }));
+      el.dispatchEvent(new InputEvent("input", {
+        bubbles: true,
+        inputType: "insertText",
+        data: text,
+      }));
     }
   }
+
 
   // Bottom-right toast for ALLOW / WARN / general info
   function showToast(message, color = "#16a34a", duration = 2200) {
@@ -439,6 +468,81 @@ if (window.__AI_PRIVACY_PROXY_ACTIVE__) {
       event.stopImmediatePropagation();
       console.log("[extension] Intercepted send button, starting scan.");
       scanPromptAndAct("button");
+    },
+    true,
+  );
+
+  // ── Image paste interception ─────────────────────────────────────────────
+  // When the user pastes an image (e.g. a screenshot of source code),
+  // we OCR it and paste the extracted text into the prompt box.
+  // The user can then review/edit it and click Send — at that point the
+  // existing text scanner runs as normal.
+  document.addEventListener(
+    "paste",
+    async (event) => {
+      const items = event.clipboardData?.items;
+      if (!items) return;
+
+      let imageItem = null;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          imageItem = item;
+          break;
+        }
+      }
+
+      if (!imageItem) return; // no image → let normal paste proceed
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      console.log("[extension] Intercepted image paste — running OCR.");
+      showToast("🔍 Reading image text...", "#8b5cf6", 6000);
+
+      try {
+        const file = imageItem.getAsFile();
+        if (!file) {
+          showToast("⚠️ Could not read pasted image.", "#f59e0b");
+          return;
+        }
+
+        // Convert image to base64
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        // Hit the OCR-only endpoint — no scanning yet
+        const res = await fetch("http://localhost:3000/api/ocr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: base64 }),
+        });
+
+        const data = await res.json();
+        const extractedText = (data.text || "").trim();
+
+        if (!extractedText) {
+          showToast("📷 No text found in image.", "#9ca3af", 2500);
+          return;
+        }
+
+        // Paste the extracted text into the prompt box  
+        // Append to existing text if there's already something typed
+        const existing = getPromptText().trim();
+        const finalText = existing
+          ? `${existing}\n\n${extractedText}`
+          : extractedText;
+
+        setPromptText(finalText);
+        showToast(`📝 Text extracted from image (${extractedText.length} chars) — review and send`, "#8b5cf6", 3500);
+        console.log("[extension] OCR text pasted into prompt box:", extractedText.substring(0, 80), "...");
+      } catch (err) {
+        console.error("[extension] OCR error:", err);
+        showToast("⚠️ Image OCR failed — try again.", "#f59e0b");
+      }
     },
     true,
   );

@@ -405,6 +405,66 @@ app.post("/secure-chat", async (req, res) => {
 });
 
 // ─────────────────────────────────────────
+// ROUTE 7 — Chat Only (no scan) — VS Code extension second-phase
+// Accepts a pre-approved / pre-redacted prompt and forwards it to
+// Featherless AI. The VS Code extension already ran /api/scan and
+// showed the decision modal; this just calls the LLM.
+// ─────────────────────────────────────────
+app.post("/api/chat-only", async (req, res) => {
+  const { prompt, department } = req.body || {};
+
+  if (typeof prompt !== "string" || !prompt.trim()) {
+    return res.status(400).json({ error: "Prompt is required" });
+  }
+
+  const featherlessKey = process.env.FEATHERLESS_API_KEY;
+  if (!featherlessKey) {
+    return res.status(500).json({ error: "Featherless API key not configured" });
+  }
+
+  try {
+    const modelId = process.env.FEATHERLESS_MODEL || "deepseek-ai/DeepSeek-V3.2";
+
+    const featherlessResponse = await fetch(
+      "https://api.featherless.ai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${featherlessKey}`,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a helpful coding assistant running inside VS Code. Be concise and avoid markdown unless necessary.",
+            },
+            { role: "user", content: prompt.trim() },
+          ],
+        }),
+      }
+    );
+
+    if (!featherlessResponse.ok) {
+      const text = await featherlessResponse.text().catch(() => "");
+      console.error("[api/chat-only] Featherless error:", featherlessResponse.status, text);
+      return res.status(502).json({ error: "Featherless API request failed" });
+    }
+
+    const data = await featherlessResponse.json();
+    const aiMessage =
+      data.choices?.[0]?.message?.content ?? "";
+
+    return res.json({ response: aiMessage });
+  } catch (err) {
+    console.error("[api/chat-only] Error:", err.message);
+    return res.status(500).json({ error: "Something went wrong" });
+  }
+});
+
+// ─────────────────────────────────────────
 app.listen(process.env.PORT, () => {
   console.log(`Backend running on port ${process.env.PORT}`);
 });

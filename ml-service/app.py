@@ -11,6 +11,9 @@ import logging
 
 from fastapi import FastAPI
 
+from fastapi import Body
+from pydantic import BaseModel
+
 from services.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -22,6 +25,15 @@ from services.schemas import (
 from services import presidio_service
 from services import gliner_service
 from services import intent_service
+from services import ocr_service
+
+
+class OcrRequest(BaseModel):
+    image: str  # base64-encoded image (with or without data-URL prefix)
+
+
+class OcrResponse(BaseModel):
+    text: str
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -228,6 +240,27 @@ def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
             intentClassifier=intent_ok,
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /ocr — Extract text from a base64-encoded image
+# ---------------------------------------------------------------------------
+
+
+@app.post("/ocr", response_model=OcrResponse)
+def ocr(request: OcrRequest) -> OcrResponse:
+    """
+    Extract text from a base64-encoded image using EasyOCR.
+
+    Returns extracted text (empty string if OCR is unavailable or image has no text).
+    Never crashes: all failures return { text: "" }.
+    """
+    try:
+        extracted = ocr_service.extract_text_from_image(request.image)
+    except Exception as exc:
+        logger.exception("OCR endpoint error: %s", exc)
+        extracted = ""
+    return OcrResponse(text=extracted)
 
 
 # ---------------------------------------------------------------------------
