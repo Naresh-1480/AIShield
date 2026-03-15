@@ -51,7 +51,6 @@ vscode-extension
 2. **Run your backend and ML service**
 
    From the main project root:
-
    - Start Node backend (scanner + `/secure-chat` endpoint):
 
      ```bash
@@ -73,7 +72,6 @@ vscode-extension
    ```
 
 4. **Run the extension in VS Code**
-
    - Open the `vscode-extension` folder in VS Code.
    - Press `F5` to launch the Extension Development Host.
    - In the dev host:
@@ -81,10 +79,8 @@ vscode-extension
      - Run command: **AI Privacy Guard: Open AI Privacy Guard Chat** (`aiPrivacyGuard.openChat`).
 
 5. **Use the chat**
-
    - Type a prompt and press **Send**.
    - The status and decision indicators show:
      - SAFE → AI response.
      - REDACTED → sanitized prompt + AI response.
      - BLOCKED → reason only.
-

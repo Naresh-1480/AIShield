@@ -9,16 +9,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Connect MongoDB
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected"))
   .catch((err) => console.log(err));
 
-// ─────────────────────────────────────────
-// ROUTE 1 — Core Scan Endpoint
-// Called by Chrome Extension
-// ─────────────────────────────────────────
 app.post("/api/scan", async (req, res) => {
   const { message, text, department, source } = req.body;
 
@@ -30,7 +25,6 @@ app.post("/api/scan", async (req, res) => {
   }
 
   try {
-    // Step 1: Check department rules (admin-level policy, independent of content policy engine).
     const rule = await Rule.findOne({ department });
     if (rule && rule.action === "BLOCK") {
       await Log.create({
@@ -152,7 +146,10 @@ app.post("/api/scan-image", async (req, res) => {
         const ocrData = await ocrRes.json();
         extractedText = (ocrData.text || "").trim();
       } else {
-        console.warn("[scan-image] OCR service returned non-OK status:", ocrRes.status);
+        console.warn(
+          "[scan-image] OCR service returned non-OK status:",
+          ocrRes.status,
+        );
       }
     } catch (ocrErr) {
       console.warn("[scan-image] OCR service unreachable:", ocrErr.message);
@@ -171,7 +168,11 @@ app.post("/api/scan-image", async (req, res) => {
       });
     }
 
-    console.log("[scan-image] OCR extracted text:", extractedText.substring(0, 120), "...");
+    console.log(
+      "[scan-image] OCR extracted text:",
+      extractedText.substring(0, 120),
+      "...",
+    );
 
     // Step 3: Check department-level block rule (same as /api/scan)
     const rule = await Rule.findOne({ department });
@@ -198,7 +199,10 @@ app.post("/api/scan-image", async (req, res) => {
     }
 
     // Step 4: Run the full scan pipeline on the OCR'd text
-    const policyResult = await scanPrompt(extractedText, { department, source });
+    const policyResult = await scanPrompt(extractedText, {
+      department,
+      source,
+    });
     const { action, riskScore, reasons, entities, redactedText } = policyResult;
     const wasRedacted = action === "REDACT";
 
@@ -209,7 +213,9 @@ app.post("/api/scan-image", async (req, res) => {
 
     await Log.create({
       originalMessage: `[IMAGE] ${extractedText}`,
-      redactedMessage: wasRedacted ? `[IMAGE] ${redactedText || extractedText}` : `[IMAGE] ${extractedText}`,
+      redactedMessage: wasRedacted
+        ? `[IMAGE] ${redactedText || extractedText}`
+        : `[IMAGE] ${extractedText}`,
       department: department || "Unknown",
       wasRedacted,
       wasBlocked: action === "BLOCK",
@@ -419,11 +425,14 @@ app.post("/api/chat-only", async (req, res) => {
 
   const featherlessKey = process.env.FEATHERLESS_API_KEY;
   if (!featherlessKey) {
-    return res.status(500).json({ error: "Featherless API key not configured" });
+    return res
+      .status(500)
+      .json({ error: "Featherless API key not configured" });
   }
 
   try {
-    const modelId = process.env.FEATHERLESS_MODEL || "deepseek-ai/DeepSeek-V3.2";
+    const modelId =
+      process.env.FEATHERLESS_MODEL || "deepseek-ai/DeepSeek-V3.2";
 
     const featherlessResponse = await fetch(
       "https://api.featherless.ai/v1/chat/completions",
@@ -444,18 +453,21 @@ app.post("/api/chat-only", async (req, res) => {
             { role: "user", content: prompt.trim() },
           ],
         }),
-      }
+      },
     );
 
     if (!featherlessResponse.ok) {
       const text = await featherlessResponse.text().catch(() => "");
-      console.error("[api/chat-only] Featherless error:", featherlessResponse.status, text);
+      console.error(
+        "[api/chat-only] Featherless error:",
+        featherlessResponse.status,
+        text,
+      );
       return res.status(502).json({ error: "Featherless API request failed" });
     }
 
     const data = await featherlessResponse.json();
-    const aiMessage =
-      data.choices?.[0]?.message?.content ?? "";
+    const aiMessage = data.choices?.[0]?.message?.content ?? "";
 
     return res.json({ response: aiMessage });
   } catch (err) {
